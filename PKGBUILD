@@ -14,8 +14,7 @@ source=('not::git://github.com/misterdanb/not.git')
 md5sums=('SKIP')
 
 package() {
-  install -Dm755 "$srcdir/$pkgname/not" "$pkgdir/usr/bin/not"
+  install -Dm755 "$srcdir/$pkgname/not-a-daemon" "$pkgdir/usr/bin/not-a-daemon"
   install -Dm755 "$srcdir/$pkgname/not-a-client" "$pkgdir/usr/bin/not-a-client"
-  install -Dm344 "$srcdir/$pkgname/not.service" "$pkgdir/usr/lib/systemd/system/not.service"
   install -Dm344 "$srcdir/$pkgname/config.yaml" "$pkgdir/usr/share/not/config.yaml"
 }
