@@ -1,0 +1,11 @@
+dimensions:
+    window-width: 240
+    window-height: 240
+    window-radius: 10
+    progress-strength: 16
+    progress-margin: 10
+colors:
+    window-background: 0x00141fB0
+    progress-background: 0x007f77D0
+    progress-foreground: 0x00ccffff
+

@@ -1,0 +1,24 @@
+#!/usr/bin/env python3
+import os
+import dbus
+import time
+import argparse
+
+def main():
+    parser = argparse.ArgumentParser(description="Not, a client. A client for the not notification thingy.")
+
+    parser.add_argument("image", type=str, help="the image to be shown in the notification")
+    parser.add_argument("progress", type=int, help="progress displayed in the notification")
+    parser.add_argument("time", type=int, help="time to show the notification in milliseconds")
+
+    args = parser.parse_args()
+
+    bus = dbus.SessionBus()
+    obj = bus.get_object("org.not.service", "/org/not/service")
+    iface = dbus.Interface(obj, "org.not.service")
+
+    iface.show_notification(os.path.abspath(args.image), args.progress, args.time)
+
+if __name__ == "__main__":
+    main()
+

@@ -1,0 +1,7 @@
+[Unit]
+Description=Notification thingy
+
+[Service]
+Type=dbus
+BusName=org.not.service
+ExecStart=/usr/bin/not

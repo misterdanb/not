@@ -1,0 +1,193 @@
+#!/usr/bin/env python3
+import sys, os
+import math
+import yaml
+from gi.repository import Gtk, Gdk, GLib, Gio, GdkPixbuf
+import cairo
+import dbus
+import dbus.service
+from dbus.mainloop.glib import DBusGMainLoop
+
+class NotAWindow(Gtk.Window):
+    PROG_MAX_VAL = 25
+
+    def __init__(self, config):
+        super(NotAWindow, self).__init__(Gtk.WindowType.POPUP)
+
+        self.win_size = (config["dimensions"]["window-width"], config["dimensions"]["window-height"])
+        self.win_radius = config["dimensions"]["window-radius"]
+        self.win_bg_color = self.color_int_to_rgba(config["colors"]["window-background"])
+        self.prog_strength = config["dimensions"]["progress-strength"]
+        self.prog_margin = config["dimensions"]["progress-margin"]
+        self.prog_bg_color = self.color_int_to_rgba(config["colors"]["progress-background"])
+        self.prog_fg_color = self.color_int_to_rgba(config["colors"]["progress-foreground"])
+
+        self.images = {}
+        self.img_widget = Gtk.Image.new()
+
+        self.prog_real_val = 0
+        self.prog_val = 0
+
+        self.tran_setup()
+        self.init_ui()
+
+    def color_int_to_rgba(self, color_int):
+        return (((color_int >> 24) & 0xff) / 256.0,
+                ((color_int >> 16) & 0xff) / 256.0,
+                ((color_int >> 8) & 0xff) / 256.0,
+                 (color_int & 0xff) / 256.0)
+
+    def load_image(self, img_path):
+        img_stream = Gio.MemoryInputStream.new_from_bytes(GLib.Bytes.new(open(img_path, "rb").read()))
+        self.images[img_path] = GdkPixbuf.Pixbuf.new_from_stream(img_stream, None)
+
+    def set_image(self, img_path):
+        if not img_path in self.images:
+            self.load_image(img_path)
+
+        self.img_widget.set_from_pixbuf(self.images[img_path])
+
+        self.queue_draw()
+
+    def set_progress(self, prog_val):
+        self.prog_real_val = int(prog_val)
+        self.prog_val = self.prog_real_val // 4
+
+        self.queue_draw()
+
+    def init_ui(self):
+        self.connect("draw", self.on_draw)
+        self.set_title("Transparent window")
+        self.set_type_hint(Gdk.WindowTypeHint.NOTIFICATION)
+        self.resize(self.win_size[0], self.win_size[1])
+        self.set_position(Gtk.WindowPosition.CENTER)
+        self.set_decorated(False)
+        self.connect("delete-event", Gtk.main_quit)
+
+        vbox = Gtk.VBox(spacing=0)
+
+        pad_box_top = Gtk.VBox()
+        pad_box_top.set_size_request(0, self.win_radius)
+
+        pad_box_bottom = Gtk.VBox()
+        pad_box_bottom.set_size_request(0, self.win_radius + self.prog_strength + self.prog_margin)
+
+        self.add(vbox)
+
+        vbox.pack_start(pad_box_top, True, True, 0)
+        vbox.pack_start(self.img_widget, True, True, 0)
+        vbox.pack_start(pad_box_bottom, True, True, 0)
+
+        self.img_widget.show()
+
+        vbox.show()
+
+    def tran_setup(self):
+        self.set_app_paintable(True)
+        screen = self.get_screen()
+        visual = screen.get_rgba_visual()
+
+        if visual != None and screen.is_composited():
+            self.set_visual(visual)
+
+    def draw_round_rect(self, x, y, w, h, r, ctx):
+        ctx.arc(x + r, y + r, r, math.pi, 3 * math.pi / 2)
+        ctx.line_to(x + w - r, y)
+        ctx.arc(x + w - r, y + r, r, 3 * math.pi / 2, 0)
+        ctx.line_to(x + w, y + h - r)
+        ctx.arc(x + w - r, y + h - r, r, 0, math.pi / 2)
+        ctx.line_to(x + r, y + h)
+        ctx.arc(x + r, y + h - r, r, math.pi / 2, math.pi)
+        ctx.close_path()
+        ctx.fill()
+
+    def draw_left_round_rect(self, x, y, w, h, r, ctx):
+        ctx.arc(x + r, y + r, r, math.pi, 3 * math.pi / 2)
+        ctx.line_to(x + w, y)
+        ctx.line_to(x + w, y + h)
+        ctx.line_to(x + r, y + h)
+        ctx.arc(x + r, y + h - r, r, math.pi / 2, math.pi)
+        ctx.close_path()
+        ctx.fill()
+
+    def on_draw(self, widget, ctx):
+        ctx.set_source_rgba(0, 0, 0, 0.0)
+        ctx.set_operator(cairo.OPERATOR_SOURCE)
+        ctx.paint()
+
+        # draw background
+        ctx.set_source_rgba(self.win_bg_color[0], self.win_bg_color[1], self.win_bg_color[2], self.win_bg_color[3])
+        self.draw_round_rect(0, 0, self.win_size[0], self.win_size[1], self.win_radius, ctx)
+
+        # draw progress background
+        ctx.set_source_rgba(self.prog_bg_color[0], self.prog_bg_color[1], self.prog_bg_color[2], self.prog_bg_color[3])
+
+        self.draw_round_rect(self.win_radius + self.prog_margin, self.win_size[1] - self.win_radius - self.prog_margin - self.prog_strength, self.win_size[0] - 2 * (self.win_radius + self.prog_margin), self.prog_strength, 4, ctx)
+
+        # draw progress
+        ctx.set_source_rgba(self.prog_fg_color[0], self.prog_fg_color[1], self.prog_fg_color[2], self.prog_fg_color[3])
+        
+        x = self.win_radius + self.prog_margin
+        y = self.win_size[1] - self.win_radius - self.prog_margin - self.prog_strength
+        h = self.prog_strength
+        r = 4
+
+        if self.prog_val == 25:
+            w = self.win_size[0] - 2 * (self.win_radius + self.prog_margin)
+
+            self.draw_round_rect(x, y, w, h, r, ctx)
+        elif self.prog_real_val != 0:
+            w = ((self.win_size[0] - 2 * (self.win_radius + self.prog_margin)) // self.PROG_MAX_VAL) * (self.prog_val + 1)
+
+            self.draw_left_round_rect(x, y, w, h, r, ctx)
+
+        ctx.set_operator(cairo.OPERATOR_OVER)
+
+class NotADBusService(dbus.service.Object):
+    def __init__(self):
+        DBusGMainLoop(set_as_default=True)
+
+        bus_name = dbus.service.BusName("org.not.service", bus=dbus.SessionBus())
+        dbus.service.Object.__init__(self, bus_name, "/org/not/service")
+
+        with open("/usr/share/not/config.yaml", "r") as config_file:
+            self.config = yaml.load(config_file)
+
+        self.win = NotAWindow(self.config)
+        self.event_counter = 0
+
+        #win.connect("delete-event", Gtk.main_quit)
+
+        print("It's not entering the stage!")
+
+    def event_finished(self):
+        self.event_counter -= 1
+
+        if self.event_counter == 0:
+            self.win.hide()
+
+    @dbus.service.method("org.not.service")
+    def show_notification(self, img, prog, time):
+        self.win.set_image(img)
+        self.win.set_progress(prog)
+
+        self.event_counter += 1
+
+        self.win.show_all()
+
+        GLib.timeout_add(time, self.event_finished)
+
+    @dbus.service.method("org.not.service")
+    def quit(self):
+        self.remove_from_connection()
+        Gtk.main_quit()
+
+        print("The curtain closes. Good night, everyone.")
+
+def main():
+    service = NotADBusService()
+
+    Gtk.main()
+
+if __name__ == "__main__":
+    main()
